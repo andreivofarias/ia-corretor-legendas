@@ -23,7 +23,7 @@ st.title("🏠 Imóvel Pro AI")
 
 menu = st.sidebar.selectbox("Escolha o Serviço", ["Legendar Vídeo", "Vídeo de Fotos (Tour)"])
 
-# --- MÓDULO 1: LEGENDAR VÍDEO (WHISPER + MOVIEPY) ---
+# --- MÓDULO 1: LEGENDAR VÍDEO (PILLOW + MOVIEPY) ---
 if menu == "Legendar Vídeo":
     st.header("🎬 Gerador de Legendas")
     video_file = st.file_uploader("Suba o vídeo (Máx 60s)", type=["mp4", "mov"])
@@ -46,24 +46,38 @@ if menu == "Legendar Vídeo":
             if st.button("Gerar Vídeo Legendado"):
                 with st.spinner("IA Transcrevendo e Editando..."):
                     try:
-                        # 1. Transcrição
+                        # 1. Transcrição com Whisper
                         model = whisper.load_model("tiny")
                         result = model.transcribe(input_path)
                         texto_final = result['text'].strip()
 
                         if texto_final:
-                            # 2. Criar a legenda (Usando Label para evitar erro de segurança)
-                            # Criamos uma tarja preta no fundo para garantir leitura
-                            txt_clip = TextClip(
-                                texto_final, 
-                                fontsize=28, 
-                                color='white', 
-                                font='DejaVu-Sans-Bold',
-                                bg_color='black',
-                                method='label' 
-                            ).set_duration(clip.duration).set_position(('center', 'bottom'))
+                            # 2. CRIAR LEGENDA COM PILLOW (Evita o erro de Security Policy)
+                            # Criamos uma imagem transparente do tamanho do vídeo
+                            txt_img = Image.new('RGBA', (clip.w, clip.h), (255, 255, 255, 0))
+                            draw = ImageDraw.Draw(txt_img)
+                            
+                            try:
+                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(clip.w * 0.04))
+                            except:
+                                font = ImageFont.load_default()
 
-                            # 3. Mesclar Vídeo + Legenda
+                            # Desenha a tarja preta no rodapé
+                            barra_h = int(clip.h * 0.15)
+                            draw.rectangle([0, clip.h - barra_h, clip.w, clip.h], fill=(0, 0, 0, 160))
+                            
+                            # Centraliza o texto
+                            w_txt = draw.textlength(texto_final, font=font)
+                            draw.text(((clip.w - w_txt) // 2, clip.h - barra_h + 10), texto_final, fill="white", font=font)
+                            
+                            # Salva a legenda como imagem temporária
+                            txt_img_path = f"temp/txt_{t_stamp}.png"
+                            txt_img.save(txt_img_path)
+
+                            # 3. TRANSFORMA IMAGEM EM CLIPE E SOBREPÕE
+                            txt_clip = ImageClip(txt_img_path).set_duration(clip.duration).set_position('center')
+
+                            # 4. Mesclar e Exportar
                             video_legendado = CompositeVideoClip([clip, txt_clip])
                             video_legendado.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
                             
@@ -72,13 +86,14 @@ if menu == "Legendar Vídeo":
                             
                             with open(output_path, "rb") as f:
                                 st.download_button("Baixar Vídeo Pronto", f, file_name="video_legendado.mp4")
+                            
+                            cleanup_files(txt_img_path)
                         else:
-                            st.warning("Não detectamos fala no vídeo para legendar.")
+                            st.warning("Não detectamos fala no vídeo.")
                             
                     except Exception as e:
                         st.error(f"Erro ao processar vídeo: {e}")
                     finally:
-                        # Fechar clipes para liberar memória
                         clip.close()
                         cleanup_files(input_path, output_path)
     
