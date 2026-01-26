@@ -1,13 +1,20 @@
 import streamlit as st
 import os
+import subprocess
 
-# --- CORREÇÃO PARA O STREAMLIT CLOUD (IMAGEMAGICK) ---
-# Esta parte PRECISA vir antes de importar o moviepy
-if not os.name == 'nt': 
-    os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
+# Tenta configurar o ImageMagick de forma agressiva
+os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
+
+# Força a instalação de dependências caso o Streamlit pule algo (Segurança extra)
+try:
+    import moviepy.editor
+except ImportError:
+    subprocess.check_call([os.sys.executable, "-m", "pip", "install", "moviepy==1.0.3", "decorator==4.4.2"])
 
 import whisper
 import time
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip, concatenate_videoclips
+
 # Agora importamos as ferramentas de vídeo
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip, concatenate_videoclips
 
