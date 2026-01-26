@@ -23,10 +23,19 @@ st.title("🏠 Imóvel Pro AI")
 
 menu = st.sidebar.selectbox("Escolha o Serviço", ["Legendar Vídeo", "Vídeo de Fotos (Tour)"])
 
-# --- MÓDULO 1: LEGENDAR VÍDEO (PILLOW + MOVIEPY) ---
+# --- MÓDULO 1: LEGENDAR VÍDEO (DINÂMICO + EFEITOS + CONTADOR) ---
 if menu == "Legendar Vídeo":
-    st.header("🎬 Gerador de Legendas")
-    video_file = st.file_uploader("Suba o vídeo (Máx 60s)", type=["mp4", "mov"])
+    st.header("🎬 Gerador de Legendas Dinâmicas")
+    
+    # Inicializa o contador na sessão se não existir
+    if 'contador_videos' not in st.session_state:
+        st.session_state.contador_videos = 0
+
+    # Exibe o contador de forma elegante
+    st.sidebar.metric("Vídeos Processados", st.session_state.contador_videos)
+    
+    st.info("Limite: 60 segundos por vídeo.")
+    video_file = st.file_uploader("Suba o vídeo do imóvel", type=["mp4", "mov"])
     
     if video_file:
         t_stamp = int(time.time())
@@ -39,60 +48,81 @@ if menu == "Legendar Vídeo":
         clip = VideoFileClip(input_path)
         
         if clip.duration > 60:
-            st.error("Vídeo muito longo! Limite de 60s.")
+            st.error(f"Vídeo de {clip.duration:.1f}s excede o limite de 60s.")
             clip.close()
             cleanup_files(input_path)
         else:
-            if st.button("Gerar Vídeo Legendado"):
-                with st.spinner("IA Transcrevendo e Editando..."):
+            if st.button("Gerar Vídeo com Legendas e Efeitos"):
+                with st.spinner("IA Sincronizando frases..."):
                     try:
                         # 1. Transcrição com Whisper
                         model = whisper.load_model("tiny")
                         result = model.transcribe(input_path)
-                        texto_final = result['text'].strip()
+                        segments = result.get('segments', [])
 
-                        if texto_final:
-                            # 2. CRIAR LEGENDA COM PILLOW (Evita o erro de Security Policy)
-                            # Criamos uma imagem transparente do tamanho do vídeo
+                        subtitle_clips = []
+                        temp_imgs = []
+
+                        # --- LOOP DE SEGMENTOS (CORREÇÃO E EFEITOS) ---
+                        for i, seg in enumerate(segments):
+                            texto = seg['text'].strip().upper()
+                            start_t = seg['start']
+                            end_t = seg['end']
+                            
+                            if not texto: continue
+
+                            # Criar imagem da legenda (Pillow)
                             txt_img = Image.new('RGBA', (clip.w, clip.h), (255, 255, 255, 0))
                             draw = ImageDraw.Draw(txt_img)
                             
                             try:
-                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(clip.w * 0.04))
+                                font_size = int(clip.w * 0.045) # Fonte proporcional à largura
+                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
                             except:
                                 font = ImageFont.load_default()
 
-                            # Desenha a tarja preta no rodapé
-                            barra_h = int(clip.h * 0.15)
-                            draw.rectangle([0, clip.h - barra_h, clip.w, clip.h], fill=(0, 0, 0, 160))
+                            # Barra de fundo
+                            barra_h = int(clip.h * 0.12)
+                            draw.rectangle([0, clip.h - barra_h - 40, clip.w, clip.h - 40], fill=(0, 0, 0, 180))
                             
-                            # Centraliza o texto
-                            w_txt = draw.textlength(texto_final, font=font)
-                            draw.text(((clip.w - w_txt) // 2, clip.h - barra_h + 10), texto_final, fill="white", font=font)
+                            # Texto Centralizado
+                            w_txt = draw.textlength(texto, font=font)
+                            draw.text(((clip.w - w_txt) // 2, clip.h - barra_h - 30), texto, fill="white", font=font)
                             
-                            # Salva a legenda como imagem temporária
-                            txt_img_path = f"temp/txt_{t_stamp}.png"
-                            txt_img.save(txt_img_path)
+                            seg_img_path = f"temp/seg_{t_stamp}_{i}.png"
+                            txt_img.save(seg_img_path)
+                            temp_imgs.append(seg_img_path)
 
-                            # 3. TRANSFORMA IMAGEM EM CLIPE E SOBREPÕE
-                            txt_clip = ImageClip(txt_img_path).set_duration(clip.duration).set_position('center')
-
-                            # 4. Mesclar e Exportar
-                            video_legendado = CompositeVideoClip([clip, txt_clip])
-                            video_legendado.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+                            # Criar clipe com FADE IN e FADE OUT
+                            txt_clip = (ImageClip(seg_img_path)
+                                        .set_start(start_t)
+                                        .set_duration(max(0.1, end_t - start_t))
+                                        .set_position('center')
+                                        .crossfadein(0.2)
+                                        .crossfadeout(0.2))
                             
-                            st.success("Vídeo Legendado com Sucesso!")
+                            subtitle_clips.append(txt_clip)
+
+                        # 4. Mesclagem e Contador
+                        if subtitle_clips:
+                            video_final = CompositeVideoClip([clip] + subtitle_clips)
+                            video_final.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+                            
+                            st.success("Vídeo finalizado!")
                             st.video(output_path)
                             
-                            with open(output_path, "rb") as f:
-                                st.download_button("Baixar Vídeo Pronto", f, file_name="video_legendado.mp4")
+                            # Incrementa o contador após sucesso
+                            st.session_state.contador_videos += 1
                             
-                            cleanup_files(txt_img_path)
+                            with open(output_path, "rb") as f:
+                                st.download_button("Baixar Vídeo", f, file_name="imovel_pro.mp4")
                         else:
-                            st.warning("Não detectamos fala no vídeo.")
+                            st.warning("Nenhuma fala detectada.")
+
+                        cleanup_files(*temp_imgs)
                             
                     except Exception as e:
-                        st.error(f"Erro ao processar vídeo: {e}")
+                        st.error(f"Erro no processamento: {e}")
                     finally:
                         clip.close()
                         cleanup_files(input_path, output_path)
