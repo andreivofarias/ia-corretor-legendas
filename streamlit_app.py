@@ -23,29 +23,65 @@ st.title("🏠 Imóvel Pro AI")
 
 menu = st.sidebar.selectbox("Escolha o Serviço", ["Legendar Vídeo", "Vídeo de Fotos (Tour)"])
 
-# --- MÓDULO 1: LEGENDAR VÍDEO (WHISPER) ---
+# --- MÓDULO 1: LEGENDAR VÍDEO (WHISPER + MOVIEPY) ---
 if menu == "Legendar Vídeo":
     st.header("🎬 Gerador de Legendas")
     video_file = st.file_uploader("Suba o vídeo (Máx 60s)", type=["mp4", "mov"])
+    
     if video_file:
-        input_path = f"temp/in_{int(time.time())}.mp4"
-        with open(input_path, "wb") as f: f.write(video_file.read())
+        t_stamp = int(time.time())
+        input_path = f"temp/in_{t_stamp}.mp4"
+        output_path = f"temp/out_{t_stamp}.mp4"
         
-        clip_check = VideoFileClip(input_path)
-        if clip_check.duration > 60:
-            st.error("Vídeo muito longo!")
-            clip_check.close()
+        with open(input_path, "wb") as f: 
+            f.write(video_file.read())
+        
+        clip = VideoFileClip(input_path)
+        
+        if clip.duration > 60:
+            st.error("Vídeo muito longo! Limite de 60s.")
+            clip.close()
             cleanup_files(input_path)
         else:
-            if st.button("Gerar Legendas"):
-                with st.spinner("Processando áudio..."):
-                    model = whisper.load_model("tiny")
-                    result = model.transcribe(input_path)
-                    st.success("Texto extraído!")
-                    st.write(result['text'])
-                    # Aqui você pode adicionar a lógica de sobreposição se o ImageMagick colaborar
-        clip_check.close()
+            if st.button("Gerar Vídeo Legendado"):
+                with st.spinner("IA Transcrevendo e Editando..."):
+                    try:
+                        # 1. Transcrição
+                        model = whisper.load_model("tiny")
+                        result = model.transcribe(input_path)
+                        texto_final = result['text'].strip()
 
+                        if texto_final:
+                            # 2. Criar a legenda (Usando Label para evitar erro de segurança)
+                            # Criamos uma tarja preta no fundo para garantir leitura
+                            txt_clip = TextClip(
+                                texto_final, 
+                                fontsize=28, 
+                                color='white', 
+                                font='DejaVu-Sans-Bold',
+                                bg_color='black',
+                                method='label' 
+                            ).set_duration(clip.duration).set_position(('center', 'bottom'))
+
+                            # 3. Mesclar Vídeo + Legenda
+                            video_legendado = CompositeVideoClip([clip, txt_clip])
+                            video_legendado.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+                            
+                            st.success("Vídeo Legendado com Sucesso!")
+                            st.video(output_path)
+                            
+                            with open(output_path, "rb") as f:
+                                st.download_button("Baixar Vídeo Pronto", f, file_name="video_legendado.mp4")
+                        else:
+                            st.warning("Não detectamos fala no vídeo para legendar.")
+                            
+                    except Exception as e:
+                        st.error(f"Erro ao processar vídeo: {e}")
+                    finally:
+                        # Fechar clipes para liberar memória
+                        clip.close()
+                        cleanup_files(input_path, output_path)
+    
 # --- MÓDULO 2: VÍDEO DE FOTOS (TOUR COM PILLOW) ---
 elif menu == "Vídeo de Fotos (Tour)":
     st.header("📸 Tour de Fotos com Legendas")
