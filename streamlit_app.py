@@ -108,8 +108,8 @@ if menu == "Legendar Vídeo":
 
 # --- MÓDULO 2: VÍDEO DE FOTOS (TOUR) ---
 elif menu == "Vídeo de Fotos (Tour)":
-    st.header("📸 Tour Automático de Fotos")
-    st.info("Limite: Máximo de 20 fotos por tour.")
+    st.header("📸 Tour Automático com Legendas")
+    st.info("Limite: Máximo de 20 fotos. Escreva o nome do cômodo abaixo de cada imagem.")
     
     uploaded_images = st.file_uploader("Selecione as fotos (JPG/PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
@@ -117,33 +117,61 @@ elif menu == "Vídeo de Fotos (Tour)":
         if len(uploaded_images) > 20:
             st.error(f"Selecionou {len(uploaded_images)} fotos. O limite máximo é de 20.")
         else:
-            if st.button("Criar Tour em Vídeo"):
-                with st.spinner("A montar o seu tour..."):
+            # CRIAR CAMPOS DE TEXTO PARA CADA FOTO
+            st.subheader("📝 Legendas dos Cômodos")
+            legendas = []
+            cols = st.columns(2) # Organiza em 2 colunas para ficar bonito
+            for i, img_file in enumerate(uploaded_images):
+                with cols[i % 2]:
+                    # Mostra uma miniatura da foto para o corretor saber qual é
+                    st.image(img_file, width=150)
+                    texto = st.text_input(f"Legenda da Foto {i+1}", placeholder="Ex: Sala de Jantar", key=f"input_{i}")
+                    legendas.append(texto)
+
+            if st.button("Gerar Tour com Legendas"):
+                with st.spinner("Desenhando legendas e montando vídeo..."):
                     try:
                         clips = []
                         temp_imgs = []
                         t_stamp = int(time.time())
                         
                         for i, img_file in enumerate(uploaded_images):
+                            # Salvar imagem temporária
                             t_path = f"temp/img_{t_stamp}_{i}.png"
                             with open(t_path, "wb") as f: f.write(img_file.read())
                             temp_imgs.append(t_path)
                             
+                            # Criar o clipe da imagem (3 segundos)
                             img_clip = ImageClip(t_path).set_duration(3).crossfadein(0.5)
+                            
+                            # SE HOUVER TEXTO, ADICIONAR AO CLIPE
+                            if legendas[i].strip():
+                                txt_overlay = TextClip(
+                                    legendas[i].upper(), 
+                                    fontsize=40, 
+                                    color='white',
+                                    font='DejaVu-Sans-Bold',
+                                    method='caption',
+                                    size=(img_clip.w * 0.7, None),
+                                    bg_color='black' # Fundo preto semi-transparente para leitura fácil
+                                ).set_duration(3).set_position(('center', 80)) # Posição no topo ou base
+                                
+                                # Sobrepor texto na imagem
+                                img_clip = CompositeVideoClip([img_clip, txt_overlay.set_opacity(0.7)])
+                            
                             clips.append(img_clip)
                         
-                        tour_output = f"temp/tour_{t_stamp}.mp4"
+                        tour_output = f"temp/tour_final_{t_stamp}.mp4"
                         final_tour = concatenate_videoclips(clips, method="compose")
+                        
+                        # Renderização
                         final_tour.write_videofile(tour_output, fps=24, codec="libx264")
                         
-                        st.success("Tour gerado!")
+                        st.success("Tour com legendas gerado!")
                         st.video(tour_output)
                         with open(tour_output, "rb") as f:
-                            st.download_button("Baixar Tour", f, file_name="tour_fotos.mp4")
+                            st.download_button("Baixar Tour", f, file_name="tour_imovel_legendado.mp4")
                         
                         cleanup_files(*temp_imgs, tour_output)
                     except Exception as e:
                         st.error(f"Erro ao criar tour: {e}")
-
-st.sidebar.markdown("---")
-st.sidebar.caption("v1.1 - Hotfix Cloud")
