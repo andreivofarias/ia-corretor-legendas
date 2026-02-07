@@ -128,63 +128,76 @@ if menu == "Legendar Vídeo":
                         cleanup_files(input_path, output_path)
     
 # --- MÓDULO 2: VÍDEO DE FOTOS (TOUR COM PILLOW) ---
+# --- MÓDULO 2: VÍDEO DE FOTOS (OTIMIZADO PARA CELULAR) ---
 elif menu == "Vídeo de Fotos (Tour)":
-    st.header("📸 Tour de Fotos com Legendas")
-    uploaded_images = st.file_uploader("Selecione até 20 fotos", type=["jpg", "png"], accept_multiple_files=True)
+    st.header("📸 Tour de Fotos")
+    
+    # Botão para limpar o cache se as coisas travarem
+    if st.sidebar.button("Limpar Memória do App"):
+        st.cache_data.clear()
+        st.success("Memória limpa!")
+
+    uploaded_images = st.file_uploader("Selecione fotos", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_images:
-        if len(uploaded_images) > 20:
-            st.error("Limite de 20 fotos excedido.")
-        else:
-            legendas = []
-            cols = st.columns(2)
-            for i, img_file in enumerate(uploaded_images):
-                with cols[i % 2]:
-                    st.image(img_file, width=150)
-                    texto = st.text_input(f"Legenda {i+1}", key=f"tour_{i}")
-                    legendas.append(texto)
+        legendas = []
+        # Reduzimos o número de colunas no mobile para não travar o render do navegador
+        for i, img_file in enumerate(uploaded_images):
+            # 1. Redimensionamento preventivo (O segredo para não travar o celular)
+            # Abrimos a imagem em modo 'lazy' para não estourar a RAM
+            with Image.open(img_file) as img_temp:
+                img_temp.verify() # Verifica se o arquivo não está corrompido
+            
+            img_view = Image.open(img_file)
+            img_view.thumbnail((300, 300)) # Miniatura leve para o navegador do celular
+            st.image(img_view, caption=f"Foto {i+1}")
+            
+            texto = st.text_input(f"Legenda {i+1}", key=f"tour_mob_{i}")
+            legendas.append(texto)
 
-            if st.button("Criar Vídeo"):
-                with st.spinner("Desenhando legendas nas fotos..."):
-                    try:
-                        clips = []
-                        temp_files = []
-                        t_stamp = int(time.time())
+        if st.button("Criar Vídeo"):
+            with st.status("Processando...", expanded=True) as status:
+                try:
+                    clips = []
+                    temp_files = []
+                    t_stamp = int(time.time())
 
-                        for i, img_file in enumerate(uploaded_images):
-                            # 1. Abrir a imagem com Pillow
-                            img = Image.open(img_file).convert("RGB")
+                    for i, img_file in enumerate(uploaded_images):
+                        # Forçar conversão para RGB e Redução de resolução
+                        # Fotos de celulares modernos têm 12MP+, o que trava o servidor free
+                        with Image.open(img_file) as img:
+                            img = img.convert("RGB")
+                            # Reduzimos para Full HD no máximo para economizar RAM
+                            img.thumbnail((1920, 1080))
                             
-                            # 2. Desenhar a legenda se existir
                             if legendas[i].strip():
                                 draw = ImageDraw.Draw(img)
-                                # Tenta usar uma fonte do sistema, se não, usa a padrão
                                 try:
-                                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+                                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 45)
                                 except:
                                     font = ImageFont.load_default()
                                 
-                                # Desenha barra preta no rodapé
-                                draw.rectangle([0, img.height-100, img.width, img.height], fill=(0,0,0,180))
-                                draw.text((40, img.height-80), legendas[i].upper(), fill="white", font=font)
+                                draw.rectangle([0, img.height-120, img.width, img.height], fill=(0,0,0,180))
+                                draw.text((40, img.height-90), legendas[i].upper(), fill="white", font=font)
 
-                            # 3. Salvar imagem processada
-                            img_path = f"temp/proc_{t_stamp}_{i}.jpg"
-                            img.save(img_path)
+                            img_path = f"temp/mob_proc_{t_stamp}_{i}.jpg"
+                            img.save(img_path, "JPEG", quality=85) # Quality 85 economiza muito espaço
                             temp_files.append(img_path)
+                            clips.append(ImageClip(img_path).set_duration(3).set_fps(24))
 
-                            # 4. Criar clipe para o MoviePy
-                            clips.append(ImageClip(img_path).set_duration(3).crossfadein(0.5))
+                    status.update(label="Gerando arquivo de vídeo...", state="running")
+                    final_video = concatenate_videoclips(clips, method="compose")
+                    out_path = f"temp/tour_{t_stamp}.mp4"
+                    
+                    # Usamos o preset 'ultrafast' para o servidor não cansar
+                    final_video.write_videofile(out_path, fps=24, codec="libx264", preset="ultrafast")
 
-                        # 5. Concatenar e gerar vídeo
-                        final_video = concatenate_videoclips(clips, method="compose")
-                        out_path = f"temp/tour_{t_stamp}.mp4"
-                        final_video.write_videofile(out_path, fps=24, codec="libx264")
-
-                        st.video(out_path)
-                        with open(out_path, "rb") as f:
-                            st.download_button("Baixar Tour", f, file_name="tour_imovel.mp4")
-                        
-                        cleanup_files(*temp_files, out_path)
-                    except Exception as e:
-                        st.error(f"Erro: {e}")
+                    st.video(out_path)
+                    status.update(label="Vídeo pronto!", state="complete")
+                    
+                    with open(out_path, "rb") as f:
+                        st.download_button("Baixar Vídeo", f, file_name="tour_celular.mp4")
+                    
+                    cleanup_files(*temp_files, out_path)
+                except Exception as e:
+                    st.error(f"Erro no celular: {e}")
