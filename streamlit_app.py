@@ -5,23 +5,77 @@ import time
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip, concatenate_videoclips
 from PIL import Image, ImageDraw, ImageFont
 
-# --- CONFIGURAÇÕES DE SEGURANÇA ---
-os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
+# --- CONFIGURAÇÕES DE PÁGINA E MARCA ---
+st.set_page_config(page_title="Layer1 App", page_icon="🏢", layout="centered")
 
-if not os.path.exists("temp"):
-    os.makedirs("temp")
+# CSS para Estilização Professional do Layer1
+st.markdown("""
+    <style>
+    /* Estilo dos Cards de Navegação */
+    div.stButton > button {
+        width: 100%;
+        height: 120px;
+        font-size: 22px;
+        font-weight: bold;
+        border-radius: 12px;
+        background-color: #ffffff;
+        border: 2px solid #007BFF;
+        color: #007BFF;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    div.stButton > button:hover {
+        background-color: #007BFF;
+        color: white;
+        transform: translateY(-2px);
+    }
+    /* Título Principal */
+    .main-title {
+        text-align: center;
+        font-size: 40px;
+        font-weight: 850;
+        color: #1E1E1E;
+        margin-bottom: 30px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-def cleanup_files(*filenames):
-    for f in filenames:
-        if os.path.exists(f):
-            try: os.remove(f)
-            except: pass
+# Inicializa o estado do menu
+if 'menu_escolhido' not in st.session_state:
+    st.session_state.menu_escolhido = None
 
-# --- INTERFACE ---
-st.set_page_config(page_title="Imóvel Pro AI", page_icon="🏠")
-st.title("🏠 Imóvel Pro AI")
+# --- LÓGICA DE NAVEGAÇÃO LAYER1 ---
+if st.session_state.menu_escolhido is None:
+    st.markdown("<h1 class='main-title'>🏢 Layer1 App</h1>", unsafe_allow_html=True)
+    st.subheader("O que vamos criar hoje?")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🎬\nLEGENDAR\nVÍDEO"):
+            st.session_state.menu_escolhido = "Legendar Vídeo"
+            st.rerun()
+            
+    with col2:
+        if st.button("📸\nTOUR DE\nFOTOS"):
+            st.session_state.menu_escolhido = "Vídeo de Fotos (Tour)"
+            st.rerun()
+            
+    st.info("💡 Bem-vindo ao Layer1. Selecione uma ferramenta para começar o processamento.")
 
-menu = st.sidebar.selectbox("Escolha o Serviço", ["Legendar Vídeo", "Vídeo de Fotos (Tour)"])
+else:
+    # Cabeçalho interno do App
+    cols_nav = st.columns([1, 4])
+    with cols_nav[0]:
+        if st.button("⬅️ Sair"):
+            st.session_state.menu_escolhido = None
+            st.rerun()
+    with cols_nav[1]:
+        st.markdown(f"### 🏢 Layer1 > {st.session_state.menu_escolhido}")
+    
+    st.divider()
+    
+    menu = st.session_state.menu_escolhido
 
 # --- MÓDULO 1: LEGENDAR VÍDEO (DINÂMICO + EFEITOS + CONTADOR) ---
 if menu == "Legendar Vídeo":
